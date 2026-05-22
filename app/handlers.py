@@ -1,6 +1,8 @@
 from aiogram import F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ErrorEvent
+
+import logging
 
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
@@ -47,16 +49,28 @@ async def get_new_entry(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AddTransaction.wait_amount_old_cat)
 async def insert_entry_in_table(message: Message, state: FSMContext):
-    amount = float(message.text)
+    if not message.text:
+        await message.answer(text="Укажите стоимость в цифрах")
+        return
+    clean_text = message.text.replace(',', '.')
+    try:
+        amount = float(clean_text)
+        if amount <= 0:
+            await message.answer(text="Сумма должна быть больше нуля (например 500 или 159.99).\nЕсли выбрана категория <Расход>, стоит указывать числа без '-'")
+            return
+    except ValueError:
+        await message.answer(text="Указано недопустимое значение!")
+        return
     await state.update_data(chosen_amount=amount)
     user_data = await state.get_data()
     category_id = user_data['chosen_category_id']
     amount = user_data['chosen_amount']
 
-    result = insert_in_transactions(category_id, amount)
+    insert_in_transactions(category_id, amount)
 
-    await message.answer('Операция успешно добавлена!')
+    await message.answer(text="Операция успешно добавлена!")
     await state.clear()
+
 
 #TODO: хендлеры на добавление категории и записи
 @router.callback_query(F.data.startswith("new:"))
@@ -67,7 +81,14 @@ async def insert_new_categoryANDentry(callback: CallbackQuery, state: FSMContext
 
 @router.message(AddTransaction.wait_category_name)
 async def get_name_category(message: Message, state: FSMContext):
-    category = str(message.text)
+    if not message.text:
+        await message.answer("Указано недопустимое значение!")
+        return
+    category = message.text.strip()
+    if len(category) > 50:
+        await message.answer(text="Не более 50 символов!")
+        return
+    category.capitalize()
     await state.update_data(name_category=category)
     await state.set_state(AddTransaction.wait_type)
     await message.answer(text="Запомнил! Теперь выбери тип операции:", reply_markup=type_operation_keyboard)
@@ -82,7 +103,19 @@ async def get_type_category(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AddTransaction.wait_amount_new_cat)
 async def get_amount(message: Message, state: FSMContext):
-    amount = float(message.text)
+    if not message.text:
+        await message.answer(text="Укажите стоимость в цифрах")
+        return
+    clean_text = message.text.replace(',', '.')
+    try:
+        amount = float(clean_text)
+        if amount <= 0:
+            await message.answer(text="Сумма должна быть больше нуля (например 500 или 159.99).\nЕсли выбрана категория <Расход>, стоит указывать числа без '-'")
+            return
+    except ValueError:
+        await message.answer(text="Указано недопустимое значение!")
+        return
+    
     await state.update_data(new_amount=amount)
     user_data = await state.get_data()
     name_category = user_data["name_category"]
@@ -107,3 +140,17 @@ async def delete_entry(callback: CallbackQuery):
     delete_from_db(entry_id)
     await callback.message.edit_text(text="Успешно", reply_markup=None)
     await callback.answer()
+
+
+# ~ Глобальная обработка ошибок
+@router.errors()
+async def global_error_handler(event: ErrorEvent):
+    logging.error("Critical error caused by %s", event.exception, exc_info=True)
+    try:
+        if event.update.message():
+            await event.update.message.answer(text="Что-то пошло не так...\nПовторите попытку позже.")
+        elif event.update.callback_query:
+            await event.update.callback_query.answer()
+            await event.update.callback_query.message.answer(text="Произошла непредвиденная ошибка...\nПовторите попытку позже.")
+    except Exception as error:
+        logging.critical(f"Не удалось отправить сообщение пользователю: {error}")

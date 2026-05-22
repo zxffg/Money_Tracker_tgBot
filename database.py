@@ -22,24 +22,25 @@ try:
     cursor.close()
 except Exception as e:
     print(f"Error connecting to database {e}")
-#! finally:
-#!     if 'connect' in locals() and connect:
-#!         connect.close()
-#!         print("Сonnection interrupted")
 
 #? Реализация добавления записи в таблицу с нуля
 def insert_in_db(name: str, type: str) -> str:
+    if connect.closed: psycopg2.connect()
+    cursor = None
     try:
         cursor = connect.cursor()
         cursor.execute("INSERT INTO categories(name, type) VALUES(%s, %s) ON CONFLICT (name) DO NOTHING", (name, type))
         connect.commit()
     except Exception as e:
         connect.rollback()
+        raise e
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
 
 #? Получение id категории из таблицы
 def get_category_id(name: str, type: str) -> int:
+    if connect.closed: psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -57,11 +58,13 @@ def get_category_id(name: str, type: str) -> int:
         connect.rollback()
         raise e
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
     
 
 #? Реализация добавления записи в таблицу transactions с уже выбранной категорией
 def insert_in_transactions(category_id: int, amount: float):
+    if connect.closed: psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -69,38 +72,43 @@ def insert_in_transactions(category_id: int, amount: float):
         connect.commit()
         return("entry succses added")
     except Exception as e:
-        return(f"finished with error {e}")
+        connect.rollback()
+        raise e
     finally:
         if cursor is not None:
             cursor.close()
 
 #! Реализация удаления записи из transactions
 def delete_from_db(id: int) -> str:
+    if connect.closed: psycopg2.connect()
+    cursor = None
     try:
         cursor = connect.cursor()
-        cursor.execute("DELETE FROM transactions WHERE id = %s", (str(id)))
+        cursor.execute("DELETE FROM transactions WHERE id = %s", [id])
         connect.commit()
-        return(f"entry with number {id} deleted")
     except Exception as e:
-        return(f"finished with error {e}")
+        raise e
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
 
 #! Последние 5 добавленных записей
 def last_five_entrys():
     try:
         cursor = connect.cursor()
-        cursor.execute("SELECT * FROM transactions ORDER BY created_at DESC LIMIT 5")
+        cursor.execute("SELECT id, T.category_id, name, amount, type, created_at FROM transactions AS T LEFT JOIN categories USING(category_id) ORDER BY created_at DESC LIMIT 5")
         ids = cursor.fetchall()
         foam = []
         for row in ids:
-            id, category_id, amount, created_at = row
-            foam.append([id, category_id, int(amount), created_at.strftime("%d.%m.%y %H:%M:%S")])
+            id, category_id, name, amount, type, created_at = row
+            foam.append([id, category_id, name, float(amount), type, created_at.strftime("%d.%m.%y %H:%M:%S")])
         return foam
     except Exception as e:
+        connect.rollback()
         raise e
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
         foam = []
 
 #! Показывает количество денег на счете прямо сейчас
@@ -113,7 +121,8 @@ def money_on_account():
         balance = result[0][0]
         return float(balance)
     except Exception as e:
-        return f"finished with error {e}"
+        connect.rollback()
+        raise e
     finally:
         if cursor is not None:
             cursor.close()
@@ -123,12 +132,12 @@ def ten_popular_categories():
     cursor = None
     try:
         cursor = connect.cursor()
-        cursor.execute("SELECT category_id, name, COUNT(id) AS amount_entrys FROM categories LEFT JOIN transactions USING(category_id) GROUP BY category_id, name ORDER BY amount_entrys DESC LIMIT 5")
+        cursor.execute("SELECT category_id, name, type, COUNT(id) AS amount_entrys FROM categories LEFT JOIN transactions USING(category_id) GROUP BY category_id, name ORDER BY amount_entrys DESC LIMIT 5")
         result = cursor.fetchall()
         return result
     except Exception as e:
-        return f"finished with error {e}"
+        connect.rollback()
+        raise e
     finally:
         if cursor is not None:
             cursor.close()
-        result = 0

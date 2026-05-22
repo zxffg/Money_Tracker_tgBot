@@ -16,7 +16,7 @@ async def popular_categories():
     keyboard = InlineKeyboardBuilder()
     data = ten_popular_categories()
     for row in data:
-        button_text = f"Категория {row[1]} количество записей {row[2]}"
+        button_text = f"{row[1]}, {row[2]} количество записей: {row[3]}"
         callback_value = f"cat:{row[0]}"
         keyboard.add(InlineKeyboardButton(text=button_text, callback_data=callback_value))
     keyboard.add(InlineKeyboardButton(text="Добавить новую категорию", callback_data="new:cat"))
@@ -28,7 +28,7 @@ async def delete_keyboard():
     keyboard = InlineKeyboardBuilder()
     data = last_five_entrys()
     for row in data:
-        button_text = f"Номер записи {row[0]}, сумма {row[2]}, дата создания записи {row[3]}"
+        button_text = f"{row[2]}, {row[4]} {row[3]}руб. время {row[5]}"
         callback_value = f"del:{row[0]}"
         keyboard.add(InlineKeyboardButton(text=button_text, callback_data=callback_value))
     keyboard.adjust(1)
