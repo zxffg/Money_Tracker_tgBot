@@ -4,22 +4,25 @@ from aiogram.types import Message, CallbackQuery, ErrorEvent
 
 import logging
 
+from datetime import date
+
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 from database import insert_in_db, delete_from_db, money_on_account, insert_in_transactions, get_category_id
-from app.keybords import main_keyboard, delete_keyboard, popular_categories, type_operation_keyboard
+from database import statistics_for_today, get_7day_statistic, get_30day_statistic
+from app.keybords import main_keyboard, delete_keyboard, popular_categories, type_operation_keyboard, choice_statistic_keyboard
 
 router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer('Это Бот для учета доходов/расходов!', reply_markup=main_keyboard)
+    await message.answer("💸 Это Бот для учета доходов/расходов!\nЗдесь ты можешь: добавить новую операцию, отслеживать свои траты по категориям. Cтань финансово грамотным и научись управлять своими финансами!", reply_markup=main_keyboard)
 
 #! Проверка баланса
 @router.message(F.text == 'Баланс счета')
 async def check_money(message: Message):
-    await message.reply(f"Сейчас на вашем счете: {money_on_account()} руб." )
+    await message.reply(text=f"🏝️ Баланс вашего счета: {money_on_account()} руб.\nХотите добавить новую запись или управлять существующими?")
 
 #! Добавление записи
 class AddTransaction(StatesGroup):
@@ -35,7 +38,7 @@ class AddTransaction(StatesGroup):
 @router.message(F.text == 'Добавить запись')
 async def insert_name(message: Message, state: FSMContext):
     input_kb = await popular_categories()
-    await message.answer(text="Выберите уже существующую категорию, или добавьте новую", reply_markup=input_kb)
+    await message.answer(text="❗️ Выберите уже существующую категорию, или добавьте новую.", reply_markup=input_kb)
     await state.set_state(AddTransaction.wait_category_id)
 
 #TODO: хендлеры на добавление записи
@@ -45,7 +48,7 @@ async def get_new_entry(callback: CallbackQuery, state: FSMContext):
     await state.update_data(chosen_category_id=category_id)
     await state.set_state(AddTransaction.wait_amount_old_cat)
     await callback.answer()
-    await callback.message.edit_text(text="Отлично! Укажите сумму в формате xxx.xx")
+    await callback.message.edit_text(text="📝 Отлично! Укажите сумму в формате xxx.xx")
 
 @router.message(AddTransaction.wait_amount_old_cat)
 async def insert_entry_in_table(message: Message, state: FSMContext):
@@ -68,14 +71,14 @@ async def insert_entry_in_table(message: Message, state: FSMContext):
 
     insert_in_transactions(category_id, amount)
 
-    await message.answer(text="Операция успешно добавлена!")
+    await message.answer(text="✅ Операция успешно добавлена!", reply_markup=main_keyboard)
     await state.clear()
 
 
 #TODO: хендлеры на добавление категории и записи
 @router.callback_query(F.data.startswith("new:"))
 async def insert_new_categoryANDentry(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer("Отлично! Ниже укажите название новой категории:")
+    await callback.message.answer("📝 Отлично! Ниже укажите название новой категории:")
     await state.set_state(AddTransaction.wait_category_name)
     await callback.answer()
 
@@ -91,7 +94,7 @@ async def get_name_category(message: Message, state: FSMContext):
     category.capitalize()
     await state.update_data(name_category=category)
     await state.set_state(AddTransaction.wait_type)
-    await message.answer(text="Запомнил! Теперь выбери тип операции:", reply_markup=type_operation_keyboard)
+    await message.answer(text="📝 Запомнил! Теперь выбери тип операции:", reply_markup=type_operation_keyboard)
 
 @router.callback_query(F.data.startswith("too:"))
 async def get_type_category(callback: CallbackQuery, state: FSMContext):
@@ -99,7 +102,7 @@ async def get_type_category(callback: CallbackQuery, state: FSMContext):
     await state.update_data(type_operation=type)
     await state.set_state(AddTransaction.wait_amount_new_cat)
     await callback.answer()
-    await callback.message.edit_text(text="Записал! Теперь укажи сумму операции в формате xxx.xx")
+    await callback.message.edit_text(text="📝 Записал! Теперь укажи сумму операции в формате xxx.xx")
 
 @router.message(AddTransaction.wait_amount_new_cat)
 async def get_amount(message: Message, state: FSMContext):
@@ -125,22 +128,93 @@ async def get_amount(message: Message, state: FSMContext):
     insert_in_db(name_category, type_operation)
     insert_in_transactions(int(get_category_id(name_category, type_operation)), amount)
 
-    await message.answer("Ваша запись успешно добавлена!")
+    await message.answer("✅ Ваша запись успешно добавлена!", reply_markup=main_keyboard)
     await state.clear()
 
 #! Удаление записи через inline клавиатуру
 @router.message(F.text == "Удалить запись")
 async def show_delete_menu(message: Message):
     inline_kb = await delete_keyboard()
-    await message.answer(text='Выберите одну из пяти последних записей, которую хотите удалить:', reply_markup=inline_kb)
+    await message.answer(text='❗️ Выберите одну из пяти последних записей, которую хотите удалить:', reply_markup=inline_kb)
 
 @router.callback_query(F.data.startswith("del:"))
 async def delete_entry(callback: CallbackQuery):
     entry_id = callback.data.split(":")[1]
     delete_from_db(entry_id)
-    await callback.message.edit_text(text="Успешно", reply_markup=None)
+    await callback.message.edit_text(text="✅ Успешно", reply_markup=None)
     await callback.answer()
 
+#TODO: хендлеры на статистику
+@router.message(F.text == "Статистика расходов")
+async def statistics(message: Message):
+    await message.answer(text="💁🏻 Тут ты можешь посмотреть стаистику своих расходов за разные периоды:\nсегодня, последние 7 дней, последние 30 дней.", reply_markup=choice_statistic_keyboard)
+
+#! Пост статистики
+@router.callback_query(F.data.startswith("stt:"))
+async def pull_statistic(callback: CallbackQuery):
+    type = callback.data.split(":")[1]
+    # ~ За сегодня
+    if type == "today":
+        data = statistics_for_today(date.today())
+        message_lines = ["🔹 Статистика за сегодня:\n"]
+        sum_of_expense = 0
+        for row in data:
+            name, amount, created_at = row
+            time = created_at.strftime("%H:%M:%S")
+            line = f"· Время {time} | {name} - {amount}руб."
+            message_lines.append(line)
+            sum_of_expense += float(amount)
+        message_lines.append(f"💁🏻 Всего трат за сегодня: {sum_of_expense}\n")
+        final_message = "\n".join(message_lines)
+        await callback.message.answer(final_message, parse_mode="Markdown")
+        await callback.answer()
+    # ~ За 7 дней
+    elif type == "last7days":
+        stats = get_7day_statistic(date.today())
+        message_lines = [
+            "📊 Статистика расходов за последние 7 дней\n",
+            f"💰 Всего потрачено: `{stats['total_expense']:.2f} руб.`\n",
+            "🔝 Топ категорий по сумме трат:"
+        ]
+        if stats["best_of_expense"]:
+            for category, amount in stats["best_of_expense"]:
+                message_lines.append(f" 🔸 {category} — `{amount:.2f} руб.`")
+        else:
+            message_lines.append(" 🤷‍♂️ Трат пока не было")
+
+        message_lines.append("\n🔄 Топ категорий по количеству операций:")
+        if stats["best_of_transactions"]:
+            for category, count in stats["best_of_transactions"]:
+                message_lines.append(f" 🔹 {category} — `{count} операций.`")
+        else:
+            message_lines.append(" 🤷‍♂️ Операций пока не было")
+
+        final_message = "\n".join(message_lines)
+        await callback.message.answer(final_message, parse_mode="Markdown")
+        await callback.answer()
+    elif type == "last30days":
+        stats = get_30day_statistic(date.today())
+        message_lines = [
+            "📊 Статистика расходов за последние 30 дней\n",
+            f"💰 Всего потрачено: `{stats['total_expense']:.2f} руб.`\n",
+            "🔝 Топ категорий по сумме трат:"
+        ]
+        if stats["best_of_expense"]:
+            for category, amount in stats["best_of_expense"]:
+                message_lines.append(f" 🔸 {category} — `{amount:.2f} руб.`")
+        else:
+            message_lines.append(" 🤷‍♂️ Трат пока не было")
+
+        message_lines.append("\n🔄 Топ категорий по количеству операций:")
+        if stats["best_of_transactions"]:
+            for category, count in stats["best_of_transactions"]:
+                message_lines.append(f" 🔹 {category} — `{count} операций.`")
+        else:
+            message_lines.append(" 🤷‍♂️ Операций пока не было")
+
+        final_message = "\n".join(message_lines)
+        await callback.message.answer(final_message, parse_mode="Markdown")
+        await callback.answer()
 
 # ~ Глобальная обработка ошибок
 @router.errors()

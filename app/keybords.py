@@ -7,7 +7,7 @@ from database import last_five_entrys, ten_popular_categories
 
 #! Реализация реплай кнопок и приветсвие при /start
 main_keyboard = ReplyKeyboardMarkup(keyboard=[
-    [KeyboardButton(text='Баланс счета')],
+    [KeyboardButton(text='Баланс счета'), KeyboardButton(text="Статистика расходов")],
     [KeyboardButton(text='Добавить запись'), KeyboardButton(text='Удалить запись')],
     [KeyboardButton(text='/start')]], resize_keyboard=True, input_field_placeholder="Выберите кнопку в меню.")
 
@@ -36,3 +36,6 @@ async def delete_keyboard():
 
 #! Inline клавиатура для выбора типа операции "too:"
 type_operation_keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Доход", callback_data="too:Доход")], [InlineKeyboardButton(text="Расход", callback_data="too:Расход")]])
+
+#! Inline клавиатура для выбора типа статистики
+choice_statistic_keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Сегодня", callback_data="stt:today")], [InlineKeyboardButton(text="Последние 7 дней", callback_data="stt:last7days")], [InlineKeyboardButton(text="Последние 30 дней", callback_data="stt:last30days")]])

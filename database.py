@@ -25,7 +25,9 @@ except Exception as e:
 
 #? Реализация добавления записи в таблицу с нуля
 def insert_in_db(name: str, type: str) -> str:
-    if connect.closed: psycopg2.connect()
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -40,7 +42,9 @@ def insert_in_db(name: str, type: str) -> str:
 
 #? Получение id категории из таблицы
 def get_category_id(name: str, type: str) -> int:
-    if connect.closed: psycopg2.connect()
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -64,7 +68,9 @@ def get_category_id(name: str, type: str) -> int:
 
 #? Реализация добавления записи в таблицу transactions с уже выбранной категорией
 def insert_in_transactions(category_id: int, amount: float):
-    if connect.closed: psycopg2.connect()
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -80,7 +86,10 @@ def insert_in_transactions(category_id: int, amount: float):
 
 #! Реализация удаления записи из transactions
 def delete_from_db(id: int) -> str:
-    if connect.closed: psycopg2.connect()
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -93,7 +102,11 @@ def delete_from_db(id: int) -> str:
             cursor.close()
 
 #! Последние 5 добавленных записей
-def last_five_entrys():
+def last_five_entrys() -> list:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
+    cursor = None
     try:
         cursor = connect.cursor()
         cursor.execute("SELECT id, T.category_id, name, amount, type, created_at FROM transactions AS T LEFT JOIN categories USING(category_id) ORDER BY created_at DESC LIMIT 5")
@@ -112,7 +125,10 @@ def last_five_entrys():
         foam = []
 
 #! Показывает количество денег на счете прямо сейчас
-def money_on_account():
+def money_on_account() -> float:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -128,7 +144,10 @@ def money_on_account():
             cursor.close()
 
 #! Топ 5 популярных категорий
-def ten_popular_categories():
+def ten_popular_categories() -> str:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
     cursor = None
     try:
         cursor = connect.cursor()
@@ -141,3 +160,109 @@ def ten_popular_categories():
     finally:
         if cursor is not None:
             cursor.close()
+
+# ~ Элементы статистики
+#! Запрос статистики за текущий день
+def statistics_for_today(date: str) -> tuple:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
+    cursor = None
+    try:
+        cursor = connect.cursor()
+        cursor.execute("SELECT name, amount, created_at AS created_at FROM transactions LEFT JOIN categories USING(category_id) WHERE type = 'Расход' AND DATE(created_at) = %s", [date])
+        result = cursor.fetchall()
+        return result
+    except Exception as e:
+        connect.rollback()
+        raise e
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+#! Запрос статистики за прошедшие 7 дней
+#! Статистика за 7 дней
+def get_7day_statistic(date: str) -> dict:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
+    
+    cursor = None
+    try:
+        cursor = connect.cursor()
+        
+        query = """
+        SELECT 
+            name, 
+            SUM(amount) AS total_amount, 
+            COUNT(*) AS tx_count 
+        FROM transactions 
+        LEFT JOIN categories USING(category_id) 
+        WHERE type = 'Расход' AND created_at >= %s - INTERVAL '7 days' 
+        GROUP BY name
+        """
+        cursor.execute(query, [date])
+        rows = cursor.fetchall()
+
+        total_expense = sum(row[1] for row in rows) if rows else 0.0
+
+        best_of_expense = sorted(rows, key=lambda x: x[1], reverse=True)[:3]
+        best_of_expense = [(r[0], r[1]) for r in best_of_expense]
+        
+        best_of_transactions = sorted(rows, key=lambda x: x[2], reverse=True)[:3]
+        best_of_transactions = [(r[0], r[2]) for r in best_of_transactions]
+
+        return {
+            "total_expense": total_expense,
+            "best_of_expense": best_of_expense,
+            "best_of_transactions": best_of_transactions
+        }
+    
+    except Exception as e:
+        connect.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+#! Запрос статистики за прошедшие 30 дней
+def get_30day_statistic(date: str) -> dict:
+    global connect
+    if connect.closed: 
+        connect = psycopg2.connect()
+    
+    cursor = None
+    try:
+        cursor = connect.cursor()
+        
+        query = """
+        SELECT 
+            name, 
+            SUM(amount) AS total_amount, 
+            COUNT(*) AS tx_count 
+        FROM transactions 
+        LEFT JOIN categories USING(category_id) 
+        WHERE type = 'Расход' AND created_at >= %s - INTERVAL '1 month' 
+        GROUP BY name
+        """
+        cursor.execute(query, [date])
+        rows = cursor.fetchall()
+
+        total_expense = sum(row[1] for row in rows) if rows else 0.0
+
+        best_of_expense = sorted(rows, key=lambda x: x[1], reverse=True)[:5]
+        best_of_expense = [(r[0], r[1]) for r in best_of_expense]
+        
+        best_of_transactions = sorted(rows, key=lambda x: x[2], reverse=True)[:5]
+        best_of_transactions = [(r[0], r[2]) for r in best_of_transactions]
+
+        return {
+            "total_expense": total_expense,
+            "best_of_expense": best_of_expense,
+            "best_of_transactions": best_of_transactions
+        }
+    
+    except Exception as e:
+        connect.rollback()
+        raise e
+    finally:
+        cursor.close()

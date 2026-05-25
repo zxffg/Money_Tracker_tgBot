@@ -1,11 +1,9 @@
-import asyncio
-
-import logging
-
 from aiogram import Bot, Dispatcher
 
 from app.handlers import router
 
+import asyncio
+import logging
 import os
 from dotenv import load_dotenv
 
